@@ -209,7 +209,7 @@
     function checkGuess() {
       const guess = rows[currentRow].map(t => t.textContent.toLowerCase()).join("");
       if (!WORDS.includes(guess)) {
-        alert("Kein gültiges Wort!");
+        alert("No valid entry!");
         return;
       }
       const targetArr = TARGET.split("");
