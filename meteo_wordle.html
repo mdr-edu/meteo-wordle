@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wordle Web (DE)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #121213;
+      color: #fff;
+      height: 100vh;
+      margin: 0;
+    }
+    h1 { margin-bottom: 20px; }
+    #board {
+      display: grid;
+      grid-template-rows: repeat(6, 1fr);
+      gap: 5px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 5px;
+    }
+    .tile {
+      width: 60px;
+      height: 60px;
+      border: 2px solid #3a3a3c;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      text-transform: uppercase;
+      font-weight: bold;
+      background: #121213;
+      color: #fff;
+    }
+    .correct { background: #538d4e !important; border-color: #538d4e !important; }
+    .present { background: #b59f3b !important; border-color: #b59f3b !important; }
+    .absent  { background: #3a3a3c !important; border-color: #3a3a3c !important; }
+    #keyboard {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .kb-row {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+    }
+    .key {
+      background: #818384;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 10px;
+      cursor: pointer;
+      font-size: 1rem;
+      flex: 1;
+      max-width: 40px;
+    }
+    .key.correct { background: #538d4e; }
+    .key.present { background: #b59f3b; }
+    .key.absent { background: #3a3a3c; }
+  </style>
+</head>
+<body>
+  <h1>Meteo Wordle</h1>
+  <div id="board"></div>
+  <div id="keyboard"></div>
+  <div id="yesterday-word" style="margin-top:20px; font-size:1.2rem; color:#bbb;"></div>
+
+  <script>
+    let WORDS = [];
+    let TARGET = "";
+    let YESTERDAY_WORD = "";
+    
+    // einfache Hashfunktion für Strings
+    function hashCode(str) {
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+          hash = (hash << 5) - hash + str.charCodeAt(i);
+          hash |= 0; // zu 32-bit integer
+      }
+      return Math.abs(hash);
+    }
+
+    // Wortliste laden (wortliste.txt muss im gleichen Ordner liegen)
+    fetch("words_final.txt")
+      .then(r => r.text())
+      .then(text => {
+        WORDS = text.split(/\r?\n/).map(w => w.trim().toLowerCase()).filter(w => w.length === 5);
+      })
+      .catch(err => {
+        alert("Error loading wordlist: " + err);
+      });
+    
+    fetch("words_meteo.txt")
+      .then(r => r.text())
+      .then(text => {
+          METEOWORDS = text.split(/\r?\n/).map(w => w.trim().toLowerCase()).filter(w => w.length === 5);
+
+          const today = new Date();
+          const yesterday = new Date();
+          yesterday.setDate(today.getDate() - 1);
+
+          // Set Seeds mit Hash des Datums
+          const todayStr = today.toISOString().slice(0,10); // z.B. "2025-09-02"
+          const yesterdayStr = yesterday.toISOString().slice(0,10);
+
+          // Tageswerte setzen
+          TARGET = METEOWORDS[hashCode(todayStr) % METEOWORDS.length];
+          TARGET = "meteo"; // Für Testzwecke festes Wort
+          YESTERDAY_WORD = METEOWORDS[hashCode(yesterdayStr) % METEOWORDS.length];
+
+          // UI aktualisieren
+          document.getElementById("yesterday-word").textContent = "YESTERDAYS WORD: " + YESTERDAY_WORD.toUpperCase();
+
+          console.log("Tageswort:", TARGET);
+          console.log("Gestern:", YESTERDAY_WORD);
+        })
+      .catch(err => {
+        console.log("Error loading meteo wordlist: " + err);
+      });
+
+    const board = document.getElementById("board");
+    const keyboard = document.getElementById("keyboard");
+    const rows = [];
+    let currentRow = 0;
+    let currentTile = 0;
+    let gameOver = false;
+
+    // Build board
+    for (let r = 0; r < 6; r++) {
+      const row = document.createElement("div");
+      row.className = "row";
+      const tiles = [];
+      for (let c = 0; c < 5; c++) {
+        const tile = document.createElement("div");
+        tile.className = "tile";
+        row.appendChild(tile);
+        tiles.push(tile);
+      }
+      board.appendChild(row);
+      rows.push(tiles);
+    }
+
+    // Build keyboard
+    const keys = [
+      "QWERTYUIOP",
+      "ASDFGHJKL",
+      "ZXCVBNM"
+    ];
+
+    keys.forEach(line => {
+      const row = document.createElement("div");
+      row.className = "kb-row";
+      [...line].forEach(ch => {
+        const btn = document.createElement("button");
+        btn.textContent = ch;
+        btn.className = "key";
+        btn.addEventListener("click", () => handleKey(ch));
+        row.appendChild(btn);
+      });
+      keyboard.appendChild(row);
+    });
+
+    const enterBtn = document.createElement("button");
+    enterBtn.textContent = "ENTER";
+    enterBtn.className = "key";
+    enterBtn.style.maxWidth = "60px";
+    enterBtn.addEventListener("click", () => handleKey("Enter"));
+    keyboard.children[2].prepend(enterBtn);
+
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "⌫";
+    delBtn.className = "key";
+    delBtn.style.maxWidth = "60px";
+    delBtn.addEventListener("click", () => handleKey("Backspace"));
+    keyboard.children[2].appendChild(delBtn);
+
+    // Input handling
+    document.addEventListener("keydown", e => handleKey(e.key));
+
+    function handleKey(key) {
+      if (gameOver) return;
+      if (/^[a-zA-ZäöüßÄÖÜ]$/.test(key)) {
+        if (currentTile < 5) {
+          rows[currentRow][currentTile].textContent = key.toUpperCase();
+          currentTile++;
+        }
+      } else if (key === "Backspace") {
+        if (currentTile > 0) {
+          currentTile--;
+          rows[currentRow][currentTile].textContent = "";
+        }
+      } else if (key === "Enter") {
+        if (currentTile === 5) checkGuess();
+      }
+    }
+
+    function checkGuess() {
+      const guess = rows[currentRow].map(t => t.textContent.toLowerCase()).join("");
+      if (!WORDS.includes(guess)) {
+        alert("Kein gültiges Wort!");
+        return;
+      }
+      const targetArr = TARGET.split("");
+      const guessArr = guess.split("");
+
+      guessArr.forEach((ch, i) => {
+        const tile = rows[currentRow][i];
+        const kbKey = [...document.querySelectorAll(".key")].find(b => b.textContent === ch.toUpperCase());
+        if (ch === targetArr[i]) {
+          tile.classList.add("correct");
+          if (kbKey) kbKey.classList.add("correct");
+          targetArr[i] = null;
+        }
+      });
+      guessArr.forEach((ch, i) => {
+        const tile = rows[currentRow][i];
+        const kbKey = [...document.querySelectorAll(".key")].find(b => b.textContent === ch.toUpperCase());
+        if (!tile.classList.contains("correct")) {
+          const idx = targetArr.indexOf(ch);
+          if (idx > -1) {
+            tile.classList.add("present");
+            if (kbKey && !kbKey.classList.contains("correct")) kbKey.classList.add("present");
+            targetArr[idx] = null;
+          } else {
+            tile.classList.add("absent");
+            if (kbKey && !kbKey.classList.contains("correct") && !kbKey.classList.contains("present")) kbKey.classList.add("absent");
+          }
+        }
+      });
+
+      if (guess === TARGET) {
+        setTimeout(() => alert("🎉 Congrats! Todays word was " + TARGET.toUpperCase()), 100);
+        gameOver = true;
+        return;
+      }
+
+      currentRow++;
+      currentTile = 0;
+      if (currentRow === 6) {
+        setTimeout(() => alert("You didn’t get it. Todays word was " + TARGET.toUpperCase()), 100);
+        gameOver = true;
+      }
+    }
+  </script>
+</body>
+</html>
