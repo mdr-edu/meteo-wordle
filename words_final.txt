@@ -5788,6 +5788,7 @@ glist
 gloam
 gloat
 globe
+globi
 globy
 globs
 gloea
@@ -15958,4 +15959,3 @@ slope
 north
 south
 lenti
-globi
